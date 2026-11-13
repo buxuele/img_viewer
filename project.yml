@@ -27,7 +27,14 @@ targets:
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "14.0"
         NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
         LSApplicationCategoryType: public.app-category.photography
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: 图片
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.image
     settings:
       base:
         PRODUCT_NAME: ImgViewer

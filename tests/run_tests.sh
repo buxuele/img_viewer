@@ -7,6 +7,7 @@ output=$(mktemp -d)/imgviewer_tests
 swiftc -O \
   Sources/ImgViewer/ImageLibrary.swift \
   Sources/ImgViewer/SettingsStore.swift \
+  Sources/ImgViewer/CanvasState.swift \
   tests/main.swift \
   -o "$output"
 "$output"
