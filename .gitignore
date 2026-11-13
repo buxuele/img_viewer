@@ -1,6 +1,5 @@
+.build/
+ImgViewer.xcodeproj/
+Sources/ImgViewer/Info.plist
 .claude/worktrees/
-.venv/
-data/
-__pycache__/
-*.pyc
 .DS_Store
