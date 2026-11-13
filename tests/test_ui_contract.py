@@ -28,6 +28,8 @@ def test_required_elements_exist(app_client):
         "library", "viewer", "grid", "pager", "stage", "photo",
         "prev-button", "next-button", "zoom-slider", "zoom-out", "zoom-in",
         "zoom-label", "counter", "window-title",
+        "fit-button", "rotate-left", "rotate-right", "delete-button",
+        "confirm-dialog", "confirm-delete", "slideshow", "slideshow-photo",
     ]:
         assert f'id="{element_id}"' in html, element_id
     assert 'aria-label="上一张"' in html
@@ -54,6 +56,17 @@ def test_page_size_is_thirty_so_more_than_thirty_paginates():
     script = (STATIC / "app.js").read_text()
     assert "grid_page_size || 30" in script
     assert "第 ${state.page} / ${totalPages} 页" in script
+
+
+def test_mouse_and_keyboard_wiring():
+    script = (STATIC / "app.js").read_text()
+    for marker in [
+        'addEventListener("wheel"', "zoomAt(", "pointerdown", "pointermove",
+        "dblclick", "ArrowLeft", "ArrowRight", "PageUp", "PageDown",
+        "Delete", "F11", 'rotate(90)', 'rotate(-90)', "/api/rotation",
+        "/api/trash", 'addEventListener("keydown"',
+    ]:
+        assert marker in script, marker
 
 
 def test_library_and_viewer_are_wired():
