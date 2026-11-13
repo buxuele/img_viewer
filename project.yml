@@ -1,0 +1,36 @@
+name: ImgViewer
+options:
+  bundleIdPrefix: dev.fanchuang
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGNING_ALLOWED: "NO"
+    ENABLE_HARDENED_RUNTIME: "NO"
+
+targets:
+  ImgViewer:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/ImgViewer
+    info:
+      path: Sources/ImgViewer/Info.plist
+      properties:
+        CFBundleDisplayName: 照片查看器
+        CFBundleName: 照片查看器
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+        LSApplicationCategoryType: public.app-category.photography
+    settings:
+      base:
+        PRODUCT_NAME: ImgViewer
+        PRODUCT_BUNDLE_IDENTIFIER: dev.fanchuang.imgviewer
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: "YES"

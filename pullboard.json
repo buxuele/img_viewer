@@ -1,5 +1,5 @@
 {
-  "gate": "bash gate.sh",
+  "gate": "bash tests/run_tests.sh",
   "spec": "SPEC.md",
   "practice": "DOCTRINE.md",
   "worktrees": "inside",
@@ -18,10 +18,10 @@
     },
     "app": {
       "owns": [
-        "app/",
+        "Sources/",
         "tests/",
+        "project.yml",
         "just_run.sh",
-        "requirements.txt",
         "README.md",
         "开发记录.md",
         "docs/",
