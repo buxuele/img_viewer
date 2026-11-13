@@ -77,7 +77,7 @@ def create_app(data_dir: Path | None = None, allowed_roots: list[Path] | None = 
     def folders(path: str | None = Query(default=None)):
         folder = folder_or_400(path)
         payload = scan_folder(folder, store.rotation)
-        if path:
+        if path and store.settings()["remember_recent"]:
             store.touch_recent(folder)
         return payload
 
@@ -170,7 +170,8 @@ def create_app(data_dir: Path | None = None, allowed_roots: list[Path] | None = 
         if not chosen:
             raise HTTPException(status_code=400, detail="没有选择文件夹")
         folder = folder_or_400(chosen)
-        store.touch_recent(folder)
+        if store.settings()["remember_recent"]:
+            store.touch_recent(folder)
         return {"path": str(folder)}
 
     @app.put("/api/settings")

@@ -107,6 +107,28 @@ def test_preview_cache_reuses_and_invalidates(app_client):
     assert len(list(cache.glob("*.jpg"))) == 2
 
 
+def test_remember_recent_can_be_disabled(app_client):
+    app_client.put("/api/settings", json={"remember_recent": False})
+    app_client.get("/api/folders", params={"path": str(app_client.photos)})
+    assert app_client.get("/api/recent").json()["recent"] == []
+
+
+def test_slideshow_settings_are_validated(app_client):
+    saved = app_client.put("/api/settings", json={
+        "slideshow_interval": 3,
+        "slideshow_theme": "white",
+        "slideshow_loop": False,
+        "slideshow_shuffle": True,
+    }).json()
+    assert saved["slideshow_interval"] == 3
+    assert saved["slideshow_theme"] == "white"
+    assert saved["slideshow_loop"] is False
+    assert saved["slideshow_shuffle"] is True
+
+    assert app_client.put("/api/settings", json={"slideshow_theme": "blue"}).status_code == 400
+    assert app_client.put("/api/settings", json={"slideshow_interval": 0}).status_code == 400
+
+
 def test_trash_requires_confirmation_and_moves_file(app_client):
     image = app_client.photos / "b10.png"
     refused = app_client.post("/api/trash", json={"path": str(image)})
