@@ -1,5 +1,5 @@
 {
-  "gate": ".venv/bin/python -m pytest -q",
+  "gate": "bash gate.sh",
   "spec": "SPEC.md",
   "practice": "DOCTRINE.md",
   "worktrees": "inside",
