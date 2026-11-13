@@ -145,6 +145,17 @@ final class CanvasState: ObservableObject {
         zoom(to: target)
     }
 
+    /// 把一次滚轮事件换算成缩放倍率。触控板按像素细调，鼠标滚轮按格，
+    /// 单次最多改变百分之十，避免惯性滚动一下跳太远。
+    static func wheelZoomFactor(delta: CGFloat, precise: Bool, momentum: Bool) -> CGFloat {
+        guard abs(delta) > 0.01 else { return 1 }
+        let base: CGFloat = precise ? 0.0015 : 0.025
+        let damped = momentum ? base * 0.6 : base
+        let raw = exp(delta * damped)
+        let limit: CGFloat = 1.08
+        return min(limit, max(1 / limit, raw))
+    }
+
     static let steps: [CGFloat] = [
         0.1, 0.15, 0.25, 0.33, 0.5, 0.66, 0.75, 1,
         1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8,

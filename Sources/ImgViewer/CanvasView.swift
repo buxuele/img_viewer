@@ -52,11 +52,6 @@ final class CanvasNSView: NSView {
     private var dragOffset: CGSize = .zero
     private var isDragging = false
 
-    private static let zoomSteps: [CGFloat] = [
-        0.1, 0.15, 0.25, 0.33, 0.5, 0.66, 0.75, 1,
-        1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8,
-    ]
-
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { false }
 
@@ -125,13 +120,12 @@ final class CanvasNSView: NSView {
         }
         let delta = event.scrollingDeltaY
         guard abs(delta) > 0.01 else { return }
-        let target: CGFloat
-        if delta > 0 {
-            target = Self.zoomSteps.first(where: { $0 > canvas.scale + 0.001 }) ?? canvas.maximumScale
-        } else {
-            target = Self.zoomSteps.last(where: { $0 < canvas.scale - 0.001 }) ?? canvas.minimumScale
-        }
-        canvas.zoom(to: target, anchor: convert(event.locationInWindow, from: nil))
+        let factor = CanvasState.wheelZoomFactor(
+            delta: delta,
+            precise: event.hasPreciseScrollingDeltas,
+            momentum: event.momentumPhase != []
+        )
+        canvas.zoom(to: canvas.scale * factor, anchor: convert(event.locationInWindow, from: nil))
     }
 
     override func magnify(with event: NSEvent) {

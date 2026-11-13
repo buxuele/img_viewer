@@ -91,6 +91,15 @@ MainActor.assumeIsolated {
 
     canvas.toggleZoom()
     expect(canvas.mode == .fit, "双击切换回适应窗口")
+
+    let notch = CanvasState.wheelZoomFactor(delta: 1, precise: false, momentum: false)
+    expect(notch > 1.01 && notch <= 1.04, "鼠标滚轮单次放大幅度不超过百分之四")
+    let back = CanvasState.wheelZoomFactor(delta: -1, precise: false, momentum: false)
+    expect(abs(back - 1 / notch) < 0.0001, "反向滚动缩放倍率对称")
+    let precise = CanvasState.wheelZoomFactor(delta: 40, precise: true, momentum: false)
+    expect(precise <= 1.08, "触控板单次事件也受上限约束")
+    let momentum = CanvasState.wheelZoomFactor(delta: 40, precise: true, momentum: true)
+    expect(momentum < precise, "惯性滚动比手控滚动更慢")
 }
 
 if failures > 0 {
