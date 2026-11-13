@@ -29,13 +29,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let model = AppModel.shared
         let content = ContentView().environmentObject(model)
         let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
+            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         panel.title = model.windowTitle
-        panel.minSize = NSSize(width: 720, height: 480)
+        panel.minSize = NSSize(width: 1100, height: 600)
         panel.contentView = NSHostingView(rootView: content)
         panel.center()
         panel.makeKeyAndOrderFront(nil)

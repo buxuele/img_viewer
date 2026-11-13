@@ -183,21 +183,34 @@ struct SlideshowView: View {
     }
 
     private func controlButton(_ title: String, action: @escaping () -> Void) -> some View {
+        SlideshowControlButton(title: title, foreground: themeForeground, action: action)
+    }
+}
+
+
+struct SlideshowControlButton: View {
+    let title: String
+    let foreground: Color
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13))
+                .font(.system(size: 13, weight: .medium))
                 .padding(.horizontal, 12)
                 .frame(height: 30)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(themeForeground.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(foreground.opacity(hovering ? 0.22 : 0.12))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(themeForeground.opacity(0.25), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(foreground.opacity(hovering ? 0.45 : 0.25), lineWidth: 0.8)
                 )
         }
         .buttonStyle(.plain)
-        .foregroundStyle(themeForeground)
+        .foregroundStyle(foreground)
+        .onHover { hovering = $0 }
     }
 }

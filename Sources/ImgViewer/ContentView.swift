@@ -11,7 +11,7 @@ struct ContentView: View {
                 EmptyLibraryView(model: model)
             }
         }
-        .frame(minWidth: 720, minHeight: 480)
+        .frame(minWidth: 1040, minHeight: 560)
         .navigationTitle(model.windowTitle)
         .sheet(isPresented: $model.showingOptions) {
             OptionsView(model: model)
@@ -37,58 +37,97 @@ struct EmptyLibraryView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 52, weight: .light))
-                .foregroundStyle(Color.accentColor.opacity(0.75))
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 38, weight: .light))
+                    .foregroundStyle(Color.accentColor.opacity(0.9))
+            }
+            .frame(width: 92, height: 92)
+
             Text("打开一个文件夹开始浏览")
-                .font(.system(size: 17))
+                .font(.system(size: 16))
                 .foregroundStyle(.secondary)
+
             Button {
                 model.openFolderPanel()
             } label: {
                 Label("打开文件夹", systemImage: "folder")
-                    .font(.system(size: 15))
-                    .padding(.horizontal, 8)
+                    .font(.system(size: 14, weight: .medium))
+                    .padding(.horizontal, 10)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
             if !model.recent.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("最近打开")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
                     ForEach(model.recent.prefix(6), id: \.path) { url in
-                        Button {
+                        RecentFolderRow(url: url) {
                             model.loadFolder(url)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "folder")
-                                Text(url.lastPathComponent)
-                                Spacer(minLength: 12)
-                                Text(url.deletingLastPathComponent().path)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            .font(.system(size: 13))
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.primary.opacity(0.04))
-                        )
                     }
                 }
-                .frame(width: 460)
+                .frame(width: 470)
+                .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.972, green: 0.98, blue: 0.988),
+                    Color(red: 0.902, green: 0.925, blue: 0.947),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+}
+
+struct RecentFolderRow: View {
+    let url: URL
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.accentColor.opacity(0.85))
+                Text(url.lastPathComponent)
+                    .font(.system(size: 13, weight: .medium))
+                Spacer(minLength: 12)
+                Text(url.deletingLastPathComponent().path)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(hovering ? 0.92 : 0.7))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.black.opacity(hovering ? 0.1 : 0.06), lineWidth: 0.7)
+            )
+            .shadow(color: .black.opacity(hovering ? 0.08 : 0.04), radius: hovering ? 6 : 3, y: 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -114,21 +153,25 @@ struct ViewerContent: View {
                     onMenuAction: { model.handleMenu($0) }
                 )
                 HStack {
-                    navigationButton(system: "chevron.left", enabled: model.canGoPrevious) {
+                    NavigationChevron(system: "chevron.left", help: "上一张", enabled: model.canGoPrevious) {
                         model.goPrevious()
                     }
                     Spacer()
-                    navigationButton(system: "chevron.right", enabled: model.canGoNext) {
+                    NavigationChevron(system: "chevron.right", help: "下一张", enabled: model.canGoNext) {
                         model.goNext()
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 18)
 
                 if !canvas.hasImage {
                     ProgressView()
                         .controlSize(.large)
-                        .padding(18)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(20)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(Color.white.opacity(0.7), lineWidth: 0.8)
+                        )
                 }
             }
             ViewerToolbar(model: model, canvas: canvas)
@@ -142,26 +185,76 @@ struct ViewerContent: View {
         default: return Color(nsColor: NSColor(calibratedWhite: 0.96, alpha: 1))
         }
     }
+}
 
-    private func navigationButton(system: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+struct NavigationChevron: View {
+    let system: String
+    let help: String
+    let enabled: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: system)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                .frame(width: 46, height: 112)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor).opacity(hovering ? 1 : 0.72))
+                .frame(width: 46, height: 104)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.92))
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.white.opacity(hovering ? 0.82 : 0.58))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.black.opacity(hovering ? 0.12 : 0.08), lineWidth: 0.8)
                 )
+                .shadow(color: .black.opacity(hovering ? 0.18 : 0.1), radius: hovering ? 9 : 5, y: 2)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.25)
-        .help(system.contains("left") ? "上一张" : "下一张")
+        .opacity(enabled ? 1 : 0)
+        .help(help)
+        .onHover { hovering = $0 }
+    }
+}
+
+struct GlassToolbarButton: View {
+    var title: String = ""
+    var systemImage: String?
+    var help: String = ""
+    var enabled = true
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                if !title.isEmpty {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                }
+            }
+            .foregroundStyle(Color(nsColor: .labelColor).opacity(enabled ? 0.9 : 0.35))
+            .padding(.horizontal, title.isEmpty ? 0 : 9)
+            .frame(minWidth: 32, minHeight: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.white.opacity(enabled ? (hovering ? 0.94 : 0.68) : 0.3))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(Color.black.opacity(hovering && enabled ? 0.1 : 0.06), lineWidth: 0.7)
+            )
+            .shadow(color: .black.opacity(hovering && enabled ? 0.12 : 0.06), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(help)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -170,12 +263,10 @@ struct ViewerToolbar: View {
     @ObservedObject var canvas: CanvasState
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button { canvas.zoomOut() } label: {
-                Image(systemName: "minus.magnifyingglass")
+        HStack(spacing: 9) {
+            GlassToolbarButton(systemImage: "minus.magnifyingglass", help: "缩小", enabled: canvas.hasImage) {
+                canvas.zoomOut()
             }
-            .help("缩小")
-            .disabled(!canvas.hasImage)
 
             Slider(
                 value: Binding(
@@ -184,67 +275,84 @@ struct ViewerToolbar: View {
                 ),
                 in: 0...1
             )
-            .frame(width: 150)
+            .frame(width: 140)
             .disabled(!canvas.hasImage)
 
-            Button { canvas.zoomIn() } label: {
-                Image(systemName: "plus.magnifyingglass")
+            GlassToolbarButton(systemImage: "plus.magnifyingglass", help: "放大", enabled: canvas.hasImage) {
+                canvas.zoomIn()
             }
-            .help("放大")
-            .disabled(!canvas.hasImage)
 
             Text("\(canvas.percent)%")
-                .font(.system(size: 13).monospacedDigit())
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .leading)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .background(Capsule().fill(Color.white.opacity(0.62)))
+                .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.6))
 
-            Divider().frame(height: 24)
+            separator
 
-            Button(canvas.mode == .fit ? "实际大小" : "适应窗口") {
+            GlassToolbarButton(
+                title: canvas.mode == .fit ? "实际大小" : "适应窗口",
+                help: "在适应窗口与实际大小之间切换",
+                enabled: canvas.hasImage
+            ) {
                 canvas.toggleZoom()
             }
-            .disabled(!canvas.hasImage)
 
-            Button { model.rotate(-90) } label: {
-                Label("逆时针旋转", systemImage: "rotate.left")
+            GlassToolbarButton(title: "逆时针旋转", systemImage: "rotate.left", enabled: canvas.hasImage) {
+                model.rotate(-90)
             }
-            .disabled(!canvas.hasImage)
 
-            Button { model.rotate(90) } label: {
-                Label("顺时针旋转", systemImage: "rotate.right")
+            GlassToolbarButton(title: "顺时针旋转", systemImage: "rotate.right", enabled: canvas.hasImage) {
+                model.rotate(90)
             }
-            .disabled(!canvas.hasImage)
 
-            Button { model.deleteCurrent() } label: {
-                Label("删除", systemImage: "trash")
+            GlassToolbarButton(title: "删除", systemImage: "trash", enabled: canvas.hasImage) {
+                model.deleteCurrent()
             }
-            .disabled(!canvas.hasImage)
 
-            Button { model.startSlideshow() } label: {
-                Label("幻灯片", systemImage: "play.rectangle")
+            GlassToolbarButton(title: "幻灯片", systemImage: "play.rectangle", enabled: canvas.hasImage) {
+                model.startSlideshow()
             }
-            .disabled(!canvas.hasImage)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
 
             Text(model.counterText)
-                .font(.system(size: 13))
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(Capsule().fill(Color.white.opacity(0.62)))
+                .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.6))
         }
-        .buttonStyle(.borderless)
-        .font(.system(size: 13))
-        .padding(.horizontal, 16)
-        .frame(height: 54)
-        .background(
-            LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor), Color(nsColor: .controlBackgroundColor)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .padding(.horizontal, 14)
+        .frame(height: 56)
+        .background {
+            ZStack {
+                Rectangle().fill(.regularMaterial)
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.975, green: 0.982, blue: 0.99),
+                        Color(red: 0.905, green: 0.933, blue: 0.955),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .opacity(0.92)
+            }
+        }
         .overlay(alignment: .top) {
-            Rectangle().fill(Color.black.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(Color.white.opacity(0.7)).frame(height: 0.6)
         }
+        .shadow(color: .black.opacity(0.06), radius: 8, y: -2)
+    }
+
+    private var separator: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.08))
+            .frame(width: 1, height: 22)
+            .padding(.horizontal, 2)
     }
 
     private var logPosition: Double {
