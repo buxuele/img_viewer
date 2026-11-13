@@ -41,3 +41,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.fanchuang.imgviewer
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: "YES"
+      configs:
+        Release:
+          ARCHS: "arm64 x86_64"
+          ONLY_ACTIVE_ARCH: "NO"

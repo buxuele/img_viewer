@@ -3,3 +3,4 @@ ImgViewer.xcodeproj/
 Sources/ImgViewer/Info.plist
 .claude/worktrees/
 .DS_Store
+dist/
