@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>照片查看器</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#2f6fa8">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -20,6 +23,7 @@
     <symbol id="i-rotate-left" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2.3 7.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 4v6h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-rotate-right" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2.3 7.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M20 4v6h-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   </svg>
 
   <div class="app-window">
@@ -31,6 +35,27 @@
         <button type="button" class="window-button close" id="close-button" title="关闭" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
       </div>
     </header>
+
+    <div class="menubar" id="menubar" hidden>
+      <button type="button" class="menu-trigger" id="file-menu-button" aria-haspopup="true" aria-expanded="false">文件</button>
+      <div class="menu-popup" id="file-menu" hidden>
+        <button type="button" data-action="open-folder">打开文件夹…</button>
+        <button type="button" data-action="copy">复制</button>
+        <button type="button" data-action="copy-path">复制文件路径</button>
+        <button type="button" data-action="reveal">在访达中显示</button>
+        <button type="button" data-action="save-as">另存为…</button>
+        <div class="menu-sep"></div>
+        <button type="button" data-action="wallpaper">设为桌面背景</button>
+        <button type="button" data-action="rotate-left">逆时针旋转</button>
+        <button type="button" data-action="rotate-right">顺时针旋转</button>
+        <button type="button" data-action="delete">删除</button>
+        <div class="menu-sep"></div>
+        <button type="button" data-action="properties">属性</button>
+        <button type="button" data-action="options">选项</button>
+        <div class="menu-sep"></div>
+        <button type="button" data-action="close">关闭图片</button>
+      </div>
+    </div>
 
     <section class="library" id="library">
       <div class="library-head">
@@ -68,6 +93,8 @@
         <button type="button" class="tool-button" id="rotate-right" title="顺时针旋转 90 度（Ctrl+.）"><svg><use href="#i-rotate-right"/></svg>顺时针旋转</button>
         <div class="toolbar-sep"></div>
         <button type="button" class="tool-button danger" id="delete-button" title="删除这张图片（Delete）"><svg><use href="#i-trash"/></svg>删除</button>
+        <div class="toolbar-sep"></div>
+        <button type="button" class="tool-button" id="slideshow-button" title="全屏播放幻灯片（F11）"><svg><use href="#i-play"/></svg>幻灯片</button>
         <div class="counter" id="counter">第 1 张 / 共 1 张</div>
       </footer>
     </section>
@@ -75,8 +102,64 @@
 
   <div class="slideshow" id="slideshow" hidden>
     <img id="slideshow-photo" alt="">
-    <div class="slideshow-hint">按 Esc 退出幻灯片，左右方向键切换</div>
+    <div class="slideshow-controls">
+      <button type="button" id="slideshow-pause">暂停</button>
+      <button type="button" id="slideshow-prev">上一张</button>
+      <button type="button" id="slideshow-next">下一张</button>
+      <button type="button" id="slideshow-exit">退出</button>
+    </div>
+    <div class="slideshow-hint" id="slideshow-hint">按空格暂停，按 Esc 退出</div>
   </div>
+
+  <div class="menu-popup context-menu" id="context-menu" hidden></div>
+
+  <dialog class="dialog options-dialog" id="options-dialog">
+    <h2 class="dialog-title">选项</h2>
+    <div class="options-tabs" role="tablist">
+      <button type="button" class="options-tab active" id="tab-general" role="tab" aria-selected="true">常规</button>
+      <button type="button" class="options-tab" id="tab-slideshow" role="tab" aria-selected="false">幻灯片</button>
+    </div>
+    <div class="options-body">
+      <section class="options-panel" id="panel-general" role="tabpanel">
+        <label class="check-row"><input type="checkbox" id="opt-fit"> 打开图片时适应窗口</label>
+        <label class="check-row"><input type="checkbox" id="opt-menu"> 始终显示菜单</label>
+        <label class="check-row"><input type="checkbox" id="opt-recent"> 记住最近打开的文件夹</label>
+        <label class="check-row"><input type="checkbox" id="opt-wheel"> 滚轮缩放图片</label>
+        <label class="check-row"><input type="checkbox" id="opt-double"> 双击在适应窗口与实际大小之间切换</label>
+        <label class="field-row"><span>图片区背景</span>
+          <select id="opt-background">
+            <option value="light">浅灰</option>
+            <option value="gray">深灰</option>
+            <option value="black">黑色</option>
+          </select>
+        </label>
+      </section>
+      <section class="options-panel" id="panel-slideshow" role="tabpanel" hidden>
+        <label class="field-row"><span>每张停留</span><input type="number" id="opt-interval" min="1" max="60" step="1"> 秒</label>
+        <label class="check-row"><input type="checkbox" id="opt-loop"> 循环播放</label>
+        <label class="check-row"><input type="checkbox" id="opt-shuffle"> 随机顺序</label>
+        <label class="field-row"><span>背景主题</span>
+          <select id="opt-theme">
+            <option value="black">黑色</option>
+            <option value="white">白色</option>
+            <option value="gradient">渐变</option>
+          </select>
+        </label>
+      </section>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="plain-button" id="options-cancel">取消</button>
+      <button type="button" class="primary-button" id="options-save">保存</button>
+    </div>
+  </dialog>
+
+  <dialog class="dialog properties-dialog" id="properties-dialog">
+    <h2 class="dialog-title">属性</h2>
+    <dl class="properties-list" id="properties-list"></dl>
+    <div class="dialog-actions">
+      <button type="button" class="plain-button" id="properties-close">关闭</button>
+    </div>
+  </dialog>
 
   <dialog class="dialog" id="confirm-dialog">
     <h2 class="dialog-title">删除图片</h2>

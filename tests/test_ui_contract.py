@@ -28,7 +28,7 @@ def test_required_elements_exist(app_client):
         "library", "viewer", "grid", "pager", "stage", "photo",
         "prev-button", "next-button", "zoom-slider", "zoom-out", "zoom-in",
         "zoom-label", "counter", "window-title",
-        "fit-button", "rotate-left", "rotate-right", "delete-button",
+        "fit-button", "rotate-left", "rotate-right", "delete-button", "slideshow-button",
         "confirm-dialog", "confirm-delete", "slideshow", "slideshow-photo",
     ]:
         assert f'id="{element_id}"' in html, element_id
@@ -67,6 +67,27 @@ def test_mouse_and_keyboard_wiring():
         "/api/trash", 'addEventListener("keydown"',
     ]:
         assert marker in script, marker
+
+
+def test_menus_options_and_slideshow_are_wired():
+    html = (STATIC / "index.html").read_text()
+    for element_id in [
+        "menubar", "file-menu", "context-menu", "options-dialog", "options-save",
+        "tab-general", "tab-slideshow", "panel-general", "panel-slideshow",
+        "opt-background", "opt-theme", "opt-interval", "properties-dialog",
+        "slideshow-pause", "slideshow-exit",
+    ]:
+        assert f'id="{element_id}"' in html, element_id
+    script = (STATIC / "app.js").read_text()
+    for marker in [
+        "contextmenu", "ClipboardItem", "/api/wallpaper", "/api/reveal",
+        "/api/info", "slideshowOrder", "togglePause", "saveOptions",
+        "slidePaused", "always_show_menu",
+    ]:
+        assert marker in script, marker
+    css = (STATIC / "style.css").read_text()
+    for marker in ['.stage[data-background="black"]', ".slideshow.theme-white", "@media (max-width: 720px)"]:
+        assert marker in css, marker
 
 
 def test_library_and_viewer_are_wired():
