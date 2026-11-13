@@ -22,7 +22,7 @@ DEFAULT_SETTINGS = {
     "slideshow_loop": True,
     "slideshow_shuffle": False,
     "slideshow_theme": "black",
-    "grid_page_size": 36,
+    "grid_page_size": 30,
 }
 
 SETTING_CHOICES = {

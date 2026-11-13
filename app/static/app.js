@@ -93,7 +93,7 @@ function renderGrid() {
     return;
   }
   empty.hidden = true;
-  const size = state.settings.grid_page_size || 36;
+  const size = state.settings.grid_page_size || 30;
   const start = (state.page - 1) * size;
   const slice = state.images.slice(start, start + size);
   for (const image of slice) {
@@ -139,7 +139,7 @@ function pageNumbers(current, total) {
 function renderPager() {
   const pager = el("pager");
   pager.innerHTML = "";
-  const size = (state.settings && state.settings.grid_page_size) || 36;
+  const size = (state.settings && state.settings.grid_page_size) || 30;
   const totalPages = Math.max(1, Math.ceil(state.images.length / size));
   if (state.images.length <= size) {
     if (state.images.length) {

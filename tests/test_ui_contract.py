@@ -47,6 +47,15 @@ def test_sources_have_no_emoji():
         assert not EMOJI.search(text), name
 
 
+def test_page_size_is_thirty_so_more_than_thirty_paginates():
+    from app.config import DEFAULT_SETTINGS
+
+    assert DEFAULT_SETTINGS["grid_page_size"] == 30
+    script = (STATIC / "app.js").read_text()
+    assert "grid_page_size || 30" in script
+    assert "第 ${state.page} / ${totalPages} 页" in script
+
+
 def test_library_and_viewer_are_wired():
     script = (STATIC / "app.js").read_text()
     for marker in ["/api/folders", "/api/preview", "openFolder", "openViewer", "navigate", "pageNumbers"]:
