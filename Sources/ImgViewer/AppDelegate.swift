@@ -3,16 +3,27 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-    private var window: NSWindow?
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSWindowDelegate {
+    private final class WindowContext {
+        let window: NSWindow
+        let model: AppModel
+        var cancellable: AnyCancellable?
+
+        init(window: NSWindow, model: AppModel) {
+            self.window = window
+            self.model = model
+        }
+    }
+
+    private var contexts: [WindowContext] = []
     private var monitor: Any?
-    private var cancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
-        buildWindow()
         installMonitor()
-        openLaunchArgumentIfNeeded()
+        if !openLaunchArgumentIfNeeded() {
+            makeWindow()
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -20,51 +31,125 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         true
     }
 
-    func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        open(url)
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if contexts.isEmpty || !flag {
+            makeWindow()
+        }
+        return true
     }
 
-    private func buildWindow() {
-        let model = AppModel.shared
-        let content = ContentView().environmentObject(model)
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            open(url)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        contexts.removeAll { $0.window === window }
+    }
+
+    // MARK: 窗口
+
+    private var activeContext: WindowContext? {
+        if let key = NSApp.keyWindow {
+            if let context = contexts.first(where: { $0.window === key }) {
+                return context
+            }
+            if let parent = key.sheetParent,
+               let context = contexts.first(where: { $0.window === parent }) {
+                return context
+            }
+        }
+        if let main = NSApp.mainWindow,
+           let context = contexts.first(where: { $0.window === main }) {
+            return context
+        }
+        return contexts.last
+    }
+
+    private var activeModel: AppModel? {
+        activeContext?.model
+    }
+
+    private var modelForAction: AppModel {
+        activeModel ?? makeWindow()
+    }
+
+    @discardableResult
+    private func makeWindow(model: AppModel? = nil) -> AppModel {
+        let session = model ?? AppModel()
+        session.requestOpen = { [weak self, weak session] url in
+            guard let self, let session else { return }
+            self.open(url, reusing: session)
+        }
+
+        let content = ContentView().environmentObject(session)
         let panel = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        panel.title = model.windowTitle
+        panel.title = session.windowTitle
         panel.minSize = NSSize(width: 1100, height: 600)
+        panel.isReleasedWhenClosed = false
+        panel.delegate = self
         panel.contentView = NSHostingView(rootView: content)
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
-        window = panel
 
-        cancellable = model.objectWillChange.sink { [weak self] _ in
+        if let last = contexts.last {
+            let origin = NSPoint(
+                x: last.window.frame.minX + 28,
+                y: last.window.frame.maxY - 28
+            )
+            panel.setFrameTopLeftPoint(origin)
+        } else {
+            panel.center()
+        }
+
+        panel.makeKeyAndOrderFront(nil)
+
+        let context = WindowContext(window: panel, model: session)
+        context.cancellable = session.objectWillChange.sink { [weak panel, weak session] _ in
             DispatchQueue.main.async {
-                guard let self, let window = self.window else { return }
-                window.title = AppModel.shared.windowTitle
+                guard let panel, let session else { return }
+                panel.title = session.windowTitle
             }
         }
+        contexts.append(context)
+        return session
     }
 
-    private func openLaunchArgumentIfNeeded() {
-        guard let path = CommandLine.arguments.dropFirst().first,
-              !path.hasPrefix("-"),
-              FileManager.default.fileExists(atPath: path) else { return }
-        open(URL(fileURLWithPath: path))
+    private func modelForOpen(preferred: AppModel?) -> AppModel {
+        if let preferred, !preferred.hasImages {
+            return preferred
+        }
+        if let active = activeModel, !active.hasImages {
+            return active
+        }
+        return makeWindow()
     }
 
-    private func open(_ url: URL) {
+    private func open(_ url: URL, reusing model: AppModel? = nil) {
+        let target = modelForOpen(preferred: model)
         var isDirectory: ObjCBool = false
         FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
         if isDirectory.boolValue {
-            AppModel.shared.loadFolder(url)
+            target.loadFolder(url)
         } else {
-            AppModel.shared.openImage(url)
+            target.openImage(url)
         }
     }
+
+    private func openLaunchArgumentIfNeeded() -> Bool {
+        guard let path = CommandLine.arguments.dropFirst().first,
+              !path.hasPrefix("-"),
+              FileManager.default.fileExists(atPath: path) else { return false }
+        open(URL(fileURLWithPath: path))
+        return true
+    }
+
+    // MARK: 键盘
 
     private func installMonitor() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -79,9 +164,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let responder = NSApp.keyWindow?.firstResponder, responder is NSTextView {
             return false
         }
-        let model = AppModel.shared
-        let slideshow = SlideshowController.shared
+        if NSApp.modalWindow != nil {
+            return false
+        }
+        if let key = NSApp.keyWindow, key.sheetParent != nil {
+            return false
+        }
 
+        let slideshow = SlideshowController.shared
         if slideshow.isRunning {
             switch event.keyCode {
             case 53:
@@ -100,6 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 return false
             }
         }
+
+        guard let model = activeModel else { return false }
 
         switch event.keyCode {
         case 123, 116:
@@ -173,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fileItem.submenu = fileMenu
         add(fileMenu, "打开文件夹…", #selector(openFolder), "o", .command)
         add(fileMenu, "打开图片…", #selector(openImage), "o", [.command, .shift])
+        add(fileMenu, "新建窗口", #selector(newWindow), "n", .command)
         fileMenu.addItem(.separator())
         add(fileMenu, "另存为…", #selector(saveAs), "s", [.command, .shift])
         add(fileMenu, "属性", #selector(showProperties), "i", .command)
@@ -241,28 +334,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if NSApp.modalWindow != nil {
+            return false
+        }
         if let responder = NSApp.keyWindow?.firstResponder, responder is NSTextView {
             return false
         }
-        let model = AppModel.shared
         guard let action = menuItem.action else { return true }
+        let hasImages = activeModel?.hasImages ?? false
         switch action {
         case #selector(previousImage):
-            return model.canGoPrevious
+            return activeModel?.canGoPrevious ?? false
         case #selector(nextImage):
-            return model.canGoNext
+            return activeModel?.canGoNext ?? false
         case #selector(firstImage), #selector(lastImage):
-            return model.hasImages
+            return hasImages
         case #selector(copyImage), #selector(copyPath), #selector(saveAs),
              #selector(showProperties), #selector(deleteImage),
              #selector(rotateClockwise), #selector(rotateCounterClockwise):
-            return model.hasImages
+            return hasImages
         case #selector(zoomIn), #selector(zoomOut), #selector(fitWindow), #selector(actualSize):
-            return model.hasImages
+            return hasImages
         case #selector(startSlideshow):
-            return model.hasImages && !SlideshowController.shared.isRunning
+            return hasImages && !SlideshowController.shared.isRunning
         case #selector(toggleSlideshowPause), #selector(stopSlideshow):
             return SlideshowController.shared.isRunning
+        case #selector(openFolder), #selector(openImage), #selector(newWindow), #selector(showOptions):
+            return true
         default:
             return true
         }
@@ -270,43 +368,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: 动作
 
-    @objc private func openFolder() { AppModel.shared.openFolderPanel() }
+    @objc private func openFolder() { modelForAction.openFolderPanel() }
 
-    @objc private func openImage() { AppModel.shared.openImagePanel() }
+    @objc private func openImage() { modelForAction.openImagePanel() }
 
-    @objc private func saveAs() { AppModel.shared.saveAs() }
+    @objc private func newWindow() { makeWindow() }
 
-    @objc private func showProperties() { AppModel.shared.showProperties() }
+    @objc private func saveAs() { modelForAction.saveAs() }
 
-    @objc private func showOptions() { AppModel.shared.openOptions() }
+    @objc private func showProperties() { modelForAction.showProperties() }
 
-    @objc private func copyImage() { AppModel.shared.copyImage() }
+    @objc private func showOptions() { modelForAction.openOptions() }
 
-    @objc private func copyPath() { AppModel.shared.copyPath() }
+    @objc private func copyImage() { modelForAction.copyImage() }
 
-    @objc private func previousImage() { AppModel.shared.goPrevious() }
+    @objc private func copyPath() { modelForAction.copyPath() }
 
-    @objc private func nextImage() { AppModel.shared.goNext() }
+    @objc private func previousImage() { modelForAction.goPrevious() }
 
-    @objc private func firstImage() { AppModel.shared.goFirst() }
+    @objc private func nextImage() { modelForAction.goNext() }
 
-    @objc private func lastImage() { AppModel.shared.goLast() }
+    @objc private func firstImage() { modelForAction.goFirst() }
 
-    @objc private func zoomIn() { AppModel.shared.canvas.zoomIn() }
+    @objc private func lastImage() { modelForAction.goLast() }
 
-    @objc private func zoomOut() { AppModel.shared.canvas.zoomOut() }
+    @objc private func zoomIn() { modelForAction.canvas.zoomIn() }
 
-    @objc private func fitWindow() { AppModel.shared.canvas.fitToWindow() }
+    @objc private func zoomOut() { modelForAction.canvas.zoomOut() }
 
-    @objc private func actualSize() { AppModel.shared.canvas.actualSize() }
+    @objc private func fitWindow() { modelForAction.canvas.fitToWindow() }
 
-    @objc private func rotateClockwise() { AppModel.shared.rotate(90) }
+    @objc private func actualSize() { modelForAction.canvas.actualSize() }
 
-    @objc private func rotateCounterClockwise() { AppModel.shared.rotate(-90) }
+    @objc private func rotateClockwise() { modelForAction.rotate(90) }
 
-    @objc private func deleteImage() { AppModel.shared.deleteCurrent() }
+    @objc private func rotateCounterClockwise() { modelForAction.rotate(-90) }
 
-    @objc private func startSlideshow() { AppModel.shared.startSlideshow() }
+    @objc private func deleteImage() { modelForAction.deleteCurrent() }
+
+    @objc private func startSlideshow() { modelForAction.startSlideshow() }
 
     @objc private func toggleSlideshowPause() { SlideshowController.shared.togglePause() }
 

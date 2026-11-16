@@ -15,8 +15,6 @@ struct ImageProperties {
 
 @MainActor
 final class AppModel: ObservableObject {
-    static let shared = AppModel()
-
     @Published private(set) var images: [ImageItem] = []
     @Published private(set) var index = 0
     @Published private(set) var folder: URL?
@@ -31,6 +29,7 @@ final class AppModel: ObservableObject {
 
     let canvas = CanvasState()
     let store: SettingsStore
+    var requestOpen: ((URL) -> Void)?
     private var loadToken = 0
 
     init(store: SettingsStore = SettingsStore()) {
@@ -100,7 +99,11 @@ final class AppModel: ObservableObject {
         panel.message = "选择包含图片的文件夹"
         if let folder { panel.directoryURL = folder }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        loadFolder(url)
+        if let requestOpen {
+            requestOpen(url)
+        } else {
+            loadFolder(url)
+        }
     }
 
     func openImagePanel() {
@@ -112,7 +115,11 @@ final class AppModel: ObservableObject {
         panel.message = "选择一张图片"
         if let folder { panel.directoryURL = folder }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        openImage(url)
+        if let requestOpen {
+            requestOpen(url)
+        } else {
+            openImage(url)
+        }
     }
 
     func loadFolder(_ url: URL) {
