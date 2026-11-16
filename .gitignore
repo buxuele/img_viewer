@@ -4,3 +4,4 @@ Sources/ImgViewer/Info.plist
 .claude/worktrees/
 .DS_Store
 dist/
+demo/
