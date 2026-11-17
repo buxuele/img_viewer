@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         installMonitor()
-        if !openLaunchArgumentIfNeeded() {
+        if !openLaunchArgumentIfNeeded() && contexts.isEmpty {
             makeWindow()
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -98,11 +98,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         panel.contentView = NSHostingView(rootView: content)
 
         if let last = contexts.last {
-            let origin = NSPoint(
-                x: last.window.frame.minX + 28,
-                y: last.window.frame.maxY - 28
-            )
-            panel.setFrameTopLeftPoint(origin)
+            let lastFrame = last.window.frame
+            let screen = last.window.screen ?? NSScreen.main
+            let visible = screen?.visibleFrame ?? lastFrame
+            let sideBySideX = lastFrame.maxX + 12
+            if sideBySideX + panel.frame.width <= visible.maxX {
+                panel.setFrameTopLeftPoint(NSPoint(x: sideBySideX, y: lastFrame.maxY))
+            } else {
+                panel.setFrameTopLeftPoint(NSPoint(x: lastFrame.minX + 28, y: lastFrame.maxY - 28))
+            }
         } else {
             panel.center()
         }
@@ -265,7 +269,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         fileItem.submenu = fileMenu
         add(fileMenu, "打开文件夹…", #selector(openFolder), "o", .command)
         add(fileMenu, "打开图片…", #selector(openImage), "o", [.command, .shift])
-        add(fileMenu, "新建窗口", #selector(newWindow), "n", .command)
         fileMenu.addItem(.separator())
         add(fileMenu, "另存为…", #selector(saveAs), "s", [.command, .shift])
         add(fileMenu, "属性", #selector(showProperties), "i", .command)
@@ -359,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
             return hasImages && !SlideshowController.shared.isRunning
         case #selector(toggleSlideshowPause), #selector(stopSlideshow):
             return SlideshowController.shared.isRunning
-        case #selector(openFolder), #selector(openImage), #selector(newWindow), #selector(showOptions):
+        case #selector(openFolder), #selector(openImage), #selector(showOptions):
             return true
         default:
             return true
@@ -371,8 +374,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     @objc private func openFolder() { modelForAction.openFolderPanel() }
 
     @objc private func openImage() { modelForAction.openImagePanel() }
-
-    @objc private func newWindow() { makeWindow() }
 
     @objc private func saveAs() { modelForAction.saveAs() }
 
