@@ -21,10 +21,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         installMonitor()
+
+        let arguments = CommandLine.arguments
+        if let index = arguments.firstIndex(of: "--snapshot"),
+           arguments.indices.contains(index + 1) {
+            let output = arguments[index + 1]
+            if arguments.indices.contains(index + 2) {
+                open(URL(fileURLWithPath: arguments[index + 2]))
+            }
+            if contexts.isEmpty {
+                makeWindow()
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.captureActiveWindow(to: output)
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
         if !openLaunchArgumentIfNeeded() && contexts.isEmpty {
             makeWindow()
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func captureActiveWindow(to path: String) {
+        guard let window = activeContext?.window,
+              let frameView = window.contentView?.superview else { return }
+        let windowID = CGWindowID(window.windowNumber)
+        if let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowID, [.boundsIgnoreFraming, .bestResolution]) {
+            let rep = NSBitmapImageRep(cgImage: image)
+            if let data = rep.representation(using: .png, properties: [:]) {
+                try? data.write(to: URL(fileURLWithPath: path))
+                return
+            }
+        }
+        frameView.layoutSubtreeIfNeeded()
+        guard let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return }
+        frameView.cacheDisplay(in: frameView.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        try? data.write(to: URL(fileURLWithPath: path))
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -10,8 +10,6 @@ enum RenderMode {
         try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let folder = value(after: "--folder", in: arguments).map { URL(fileURLWithPath: $0) }
 
-        renderViewer(folder: folder, output: output.appendingPathComponent("01-查看器.png"))
-        renderEmpty(folder: folder, output: output.appendingPathComponent("02-图片库.png"))
         renderSlideshow(folder: folder, output: output.appendingPathComponent("03-幻灯片.png"))
         renderOptions(output: output.appendingPathComponent("04-选项.png"))
     }
@@ -24,10 +22,7 @@ enum RenderMode {
             model.canvas.fitToWindow()
             pump(seconds: 0.3)
         }
-        let view = ContentView()
-            .environmentObject(model)
-            .frame(width: 1200, height: 800)
-        write(view, size: NSSize(width: 1200, height: 800), to: output)
+        snapshotWindow(model: model, output: output)
     }
 
     private static func renderEmpty(folder: URL?, output: URL) {
@@ -36,10 +31,7 @@ enum RenderMode {
             model.store.remember(folder: folder)
             model.refreshRecent()
         }
-        let view = ContentView()
-            .environmentObject(model)
-            .frame(width: 1200, height: 800)
-        write(view, size: NSSize(width: 1200, height: 800), to: output)
+        snapshotWindow(model: model, output: output)
     }
 
     private static func renderSlideshow(folder: URL?, output: URL) {
@@ -62,6 +54,35 @@ enum RenderMode {
         let view = OptionsView(model: model)
             .background(Color(nsColor: .windowBackgroundColor))
         write(view, size: NSSize(width: 480, height: 380), to: output)
+    }
+
+    private static func snapshotWindow(model: AppModel, output: URL) {
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = model.windowTitle
+        panel.contentView = NSHostingView(rootView: ContentView().environmentObject(model))
+        panel.center()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeKey()
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        pump(seconds: 0.6)
+        guard let frameView = panel.contentView?.superview else {
+            panel.orderOut(nil)
+            return
+        }
+        frameView.layoutSubtreeIfNeeded()
+        if let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) {
+            frameView.cacheDisplay(in: frameView.bounds, to: rep)
+            if let data = rep.representation(using: .png, properties: [:]) {
+                try? data.write(to: output)
+            }
+        }
+        panel.orderOut(nil)
     }
 
     private static func makeModel() -> AppModel {
