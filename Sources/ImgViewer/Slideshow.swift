@@ -8,6 +8,8 @@ final class SlideshowController: ObservableObject {
     @Published private(set) var isPaused = false
 
     private weak var model: AppModel?
+    weak var ownerWindow: NSWindow?
+    weak var ownerModel: AppModel?
     private var window: NSWindow?
     private var timer: Timer?
     private var order: [Int] = []
@@ -19,6 +21,8 @@ final class SlideshowController: ObservableObject {
         stop(reloadMain: false)
         guard model.hasImages else { return }
         self.model = model
+        ownerModel = model
+        ownerWindow = model.window
         order = makeOrder(count: model.images.count, start: model.index, shuffle: model.settings.slideshowShuffle)
         position = 0
         isPaused = false
@@ -54,12 +58,14 @@ final class SlideshowController: ObservableObject {
         NSApp.presentationOptions = []
         if reloadMain {
             model?.isSlideshowRunning = false
-            if let model, model.hasImages {
+            if let model, model.hasImages, model.window != nil {
                 model.loadCurrent(fit: true)
             }
         } else {
             model?.isSlideshowRunning = false
         }
+        ownerWindow = nil
+        ownerModel = nil
     }
 
     func togglePause() {

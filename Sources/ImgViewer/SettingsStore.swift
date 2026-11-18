@@ -39,7 +39,14 @@ struct AppSettings: Codable, Equatable {
     }
 }
 
+extension Notification.Name {
+    static let imgViewerSettingsChanged = Notification.Name("imgViewerSettingsChanged")
+    static let imgViewerRecentChanged = Notification.Name("imgViewerRecentChanged")
+}
+
 final class SettingsStore {
+    static let shared = SettingsStore()
+
     private let defaults: UserDefaults
     private let settingsKey = "appSettings"
     private let recentKey = "recentFolders"
@@ -70,8 +77,10 @@ final class SettingsStore {
             return stored.validated()
         }
         set {
-            guard let data = try? JSONEncoder().encode(newValue.validated()) else { return }
+            let validated = newValue.validated()
+            guard let data = try? JSONEncoder().encode(validated) else { return }
             defaults.set(data, forKey: settingsKey)
+            NotificationCenter.default.post(name: .imgViewerSettingsChanged, object: self)
         }
     }
 
@@ -85,6 +94,12 @@ final class SettingsStore {
         var list = recentFolders.filter { $0 != path }
         list.insert(path, at: 0)
         recentFolders = list
+        NotificationCenter.default.post(name: .imgViewerRecentChanged, object: self)
+    }
+
+    func clearRecent() {
+        recentFolders = []
+        NotificationCenter.default.post(name: .imgViewerRecentChanged, object: self)
     }
 
     func rotation(for url: URL) -> Int {

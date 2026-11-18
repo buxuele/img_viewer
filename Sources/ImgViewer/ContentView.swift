@@ -11,7 +11,7 @@ struct ContentView: View {
                 EmptyLibraryView(model: model)
             }
         }
-        .frame(minWidth: 1040, minHeight: 560)
+        .frame(minWidth: 680, minHeight: 500)
         .navigationTitle(model.windowTitle)
         .sheet(isPresented: $model.showingOptions) {
             OptionsView(model: model)
@@ -65,10 +65,19 @@ struct EmptyLibraryView: View {
 
             if !model.recent.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("最近打开")
-                        .font(.system(size: 12, weight: .medium))
+                    HStack {
+                        Text("最近打开")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("清除") {
+                            model.clearRecent()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
+                    }
+                    .padding(.horizontal, 4)
                     ForEach(model.recent.prefix(6), id: \.path) { url in
                         RecentFolderRow(url: url) {
                             model.loadFolder(url)
@@ -263,70 +272,9 @@ struct ViewerToolbar: View {
     @ObservedObject var canvas: CanvasState
 
     var body: some View {
-        HStack(spacing: 9) {
-            GlassToolbarButton(systemImage: "minus.magnifyingglass", help: "缩小", enabled: canvas.hasImage) {
-                canvas.zoomOut()
-            }
-
-            Slider(
-                value: Binding(
-                    get: { logPosition },
-                    set: { canvas.zoom(to: zoomValue($0)) }
-                ),
-                in: 0...1
-            )
-            .frame(width: 140)
-            .disabled(!canvas.hasImage)
-
-            GlassToolbarButton(systemImage: "plus.magnifyingglass", help: "放大", enabled: canvas.hasImage) {
-                canvas.zoomIn()
-            }
-
-            Text("\(canvas.percent)%")
-                .font(.system(size: 12, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 9)
-                .frame(height: 26)
-                .background(Capsule().fill(Color.white.opacity(0.62)))
-                .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.6))
-
-            separator
-
-            GlassToolbarButton(
-                title: canvas.mode == .fit ? "实际大小" : "适应窗口",
-                help: "在适应窗口与实际大小之间切换",
-                enabled: canvas.hasImage
-            ) {
-                canvas.toggleZoom()
-            }
-
-            GlassToolbarButton(title: "逆时针旋转", systemImage: "rotate.left", enabled: canvas.hasImage) {
-                model.rotate(-90)
-            }
-
-            GlassToolbarButton(title: "顺时针旋转", systemImage: "rotate.right", enabled: canvas.hasImage) {
-                model.rotate(90)
-            }
-
-            GlassToolbarButton(title: "删除", systemImage: "trash", enabled: canvas.hasImage) {
-                model.deleteCurrent()
-            }
-
-            GlassToolbarButton(title: "幻灯片", systemImage: "play.rectangle", enabled: canvas.hasImage) {
-                model.startSlideshow()
-            }
-
-            Spacer(minLength: 8)
-
-            Text(model.counterText)
-                .font(.system(size: 12, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .background(Capsule().fill(Color.white.opacity(0.62)))
-                .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.6))
+        GeometryReader { proxy in
+            content(compact: proxy.size.width < 1000)
         }
-        .padding(.horizontal, 14)
         .frame(height: 56)
         .background {
             ZStack {
@@ -345,7 +293,95 @@ struct ViewerToolbar: View {
         .overlay(alignment: .top) {
             Rectangle().fill(Color.white.opacity(0.7)).frame(height: 0.6)
         }
-        .shadow(color: .black.opacity(0.06), radius: 8, y: -2)
+    }
+
+    private func content(compact: Bool) -> some View {
+        HStack(spacing: compact ? 6 : 9) {
+            GlassToolbarButton(systemImage: "minus.magnifyingglass", help: "缩小", enabled: canvas.hasImage) {
+                canvas.zoomOut()
+            }
+
+            Slider(
+                value: Binding(
+                    get: { logPosition },
+                    set: { canvas.zoom(to: zoomValue($0)) }
+                ),
+                in: 0...1
+            )
+            .frame(width: compact ? 86 : 140)
+            .disabled(!canvas.hasImage)
+
+            GlassToolbarButton(systemImage: "plus.magnifyingglass", help: "放大", enabled: canvas.hasImage) {
+                canvas.zoomIn()
+            }
+
+            Text("\(canvas.percent)%")
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(Capsule().fill(Color.white.opacity(0.62)))
+                .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.6))
+
+            separator
+
+            GlassToolbarButton(
+                title: compact ? "" : (canvas.mode == .fit ? "实际大小" : "适应窗口"),
+                systemImage: compact ? "arrow.up.left.and.arrow.down.right" : nil,
+                help: "在适应窗口与实际大小之间切换",
+                enabled: canvas.hasImage
+            ) {
+                canvas.toggleZoom()
+            }
+
+            GlassToolbarButton(
+                title: compact ? "" : "逆时针旋转",
+                systemImage: "rotate.left",
+                help: "逆时针旋转",
+                enabled: canvas.hasImage
+            ) {
+                model.rotate(-90)
+            }
+
+            GlassToolbarButton(
+                title: compact ? "" : "顺时针旋转",
+                systemImage: "rotate.right",
+                help: "顺时针旋转",
+                enabled: canvas.hasImage
+            ) {
+                model.rotate(90)
+            }
+
+            GlassToolbarButton(
+                title: compact ? "" : "删除",
+                systemImage: "trash",
+                help: "删除",
+                enabled: canvas.hasImage
+            ) {
+                model.deleteCurrent()
+            }
+
+            GlassToolbarButton(
+                title: compact ? "" : "幻灯片",
+                systemImage: "play.rectangle",
+                help: "幻灯片",
+                enabled: canvas.hasImage
+            ) {
+                model.startSlideshow()
+            }
+
+            Spacer(minLength: 6)
+
+            Text(compact ? "\(model.index + 1)/\(model.images.count)" : model.counterText)
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .background(Capsule().fill(Color.white.opacity(0.38)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.55), lineWidth: 0.7))
+        }
+        .padding(.horizontal, compact ? 10 : 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var separator: some View {

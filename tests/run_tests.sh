@@ -8,6 +8,7 @@ swiftc -O \
   Sources/ImgViewer/ImageLibrary.swift \
   Sources/ImgViewer/SettingsStore.swift \
   Sources/ImgViewer/CanvasState.swift \
+  Sources/ImgViewer/WindowPolicy.swift \
   tests/main.swift \
   -o "$output"
 "$output"

@@ -92,6 +92,14 @@ MainActor.assumeIsolated {
     canvas.toggleZoom()
     expect(canvas.mode == .fit, "双击切换回适应窗口")
 
+    let retina = CanvasState()
+    retina.setViewSize(CGSize(width: 1000, height: 800))
+    retina.setBackingScale(2)
+    retina.setImage(NSImage(size: NSSize(width: 2000, height: 1000)), rotation: 0, fit: true)
+    expect(abs(retina.scale - 0.972) < 0.001, "Retina 上按物理像素计算适应比例")
+    retina.actualSize()
+    expect(abs(retina.displayedSize.width - 1000) < 0.001, "Retina 上百分之百显示为图像像素一比一")
+
     let notch = CanvasState.wheelZoomFactor(delta: 1, precise: false, momentum: false)
     expect(notch > 1.01 && notch <= 1.04, "鼠标滚轮单次放大幅度不超过百分之四")
     let back = CanvasState.wheelZoomFactor(delta: -1, precise: false, momentum: false)
@@ -101,6 +109,20 @@ MainActor.assumeIsolated {
     let momentum = CanvasState.wheelZoomFactor(delta: 40, precise: true, momentum: true)
     expect(momentum < precise, "惯性滚动比手控滚动更慢")
 }
+
+let visible = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+let tiled = WindowPolicy.tiledFrames(in: visible)
+expect(tiled.count == 2, "并排摆放返回两个窗口")
+expect(abs(tiled[0].width - tiled[1].width) < 0.001, "并排窗口宽度一致")
+expect(tiled[0].maxX < tiled[1].minX, "并排窗口不重叠")
+expect(tiled[1].maxX <= visible.maxX, "并排窗口不超出屏幕")
+let cascaded = WindowPolicy.cascadedFrame(
+    size: CGSize(width: 900, height: 700),
+    after: CGRect(x: 600, y: 200, width: 900, height: 700),
+    in: visible
+)
+expect(cascaded.minX >= visible.minX && cascaded.maxX <= visible.maxX, "层叠窗口横向不越界")
+expect(cascaded.minY >= visible.minY && cascaded.maxY <= visible.maxY, "层叠窗口纵向不越界")
 
 if failures > 0 {
     print("失败 \(failures) 项")

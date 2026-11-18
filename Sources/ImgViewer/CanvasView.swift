@@ -75,7 +75,14 @@ final class CanvasNSView: NSView {
 
     override func layout() {
         super.layout()
+        canvas?.setBackingScale(window?.backingScaleFactor ?? 1)
         canvas?.setViewSize(bounds.size)
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        canvas?.setBackingScale(window?.backingScaleFactor ?? 1)
+        needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -94,8 +101,8 @@ final class CanvasNSView: NSView {
         context.saveGState()
         context.translateBy(x: bounds.midX + canvas.offset.width, y: bounds.midY + canvas.offset.height)
         context.rotate(by: CGFloat(canvas.rotation) * .pi / 180)
-        let width = canvas.imageSize.width * canvas.scale
-        let height = canvas.imageSize.height * canvas.scale
+        let width = canvas.imageSize.width * canvas.scale / max(1, canvas.backingScale)
+        let height = canvas.imageSize.height * canvas.scale / max(1, canvas.backingScale)
         let rect = NSRect(x: -width / 2, y: -height / 2, width: width, height: height)
         image.draw(
             in: rect,

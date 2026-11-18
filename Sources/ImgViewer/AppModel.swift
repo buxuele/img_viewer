@@ -29,13 +29,42 @@ final class AppModel: ObservableObject {
 
     let canvas = CanvasState()
     let store: SettingsStore
+    weak var window: NSWindow?
     var requestOpen: ((URL) -> Void)?
     private var loadToken = 0
+    private var fullRequested = false
+    private var fullLoaded = false
+    private var cancellables = Set<AnyCancellable>()
+    private let watcher = FolderWatcher()
 
-    init(store: SettingsStore = SettingsStore()) {
+    init(store: SettingsStore = .shared) {
         self.store = store
         settings = store.settings
         refreshRecent()
+
+        NotificationCenter.default.publisher(for: .imgViewerSettingsChanged, object: store)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.settings = store.settings
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .imgViewerRecentChanged, object: store)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshRecent()
+            }
+            .store(in: &cancellables)
+
+        canvas.$scale
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] scale in
+                guard scale >= 0.75 else { return }
+                self?.requestFullResolution()
+            }
+            .store(in: &cancellables)
     }
 
     var current: ImageItem? {
@@ -76,6 +105,8 @@ final class AppModel: ObservableObject {
             CanvasMenuEntry(key: "delete", title: "删除", enabled: hasImages),
             CanvasMenuEntry(key: "-", title: ""),
             CanvasMenuEntry(key: "properties", title: "属性", enabled: hasImages),
+            CanvasMenuEntry(key: "print", title: "打印…", enabled: hasImages),
+            CanvasMenuEntry(key: "reset-rotation", title: "重置旋转", enabled: hasImages && (current?.rotation ?? 0) != 0),
             CanvasMenuEntry(key: "options", title: "选项"),
         ]
     }
@@ -137,6 +168,7 @@ final class AppModel: ObservableObject {
                 store.remember(folder: folderURL)
                 refreshRecent()
             }
+            startWatching(folderURL)
             loadCurrent(fit: settings.fitOnOpen)
         } catch {
             alertMessage = "无法打开文件夹：\(error.localizedDescription)"
@@ -158,6 +190,7 @@ final class AppModel: ObservableObject {
                 store.remember(folder: parent)
                 refreshRecent()
             }
+            startWatching(parent)
             loadCurrent(fit: settings.fitOnOpen)
         } catch {
             alertMessage = "无法打开图片：\(error.localizedDescription)"
@@ -172,6 +205,8 @@ final class AppModel: ObservableObject {
         }
         let token = loadToken + 1
         loadToken = token
+        fullRequested = false
+        fullLoaded = false
         let shouldFit = fit ?? settings.fitOnOpen
         canvas.setImage(nil, rotation: item.rotation, fit: shouldFit)
         let url = item.url
@@ -183,9 +218,55 @@ final class AppModel: ObservableObject {
             }
             let rotation = self.current?.rotation ?? item.rotation
             self.canvas.setImage(loaded.image, rotation: rotation, fit: shouldFit)
-            ImageLoader.shared.load(url: url, maxPixel: 0) { [weak self] full in
-                guard let self, self.loadToken == token, let full else { return }
-                self.canvas.replaceImage(full.image)
+            if max(loaded.pixelSize.width, loaded.pixelSize.height) <= 4096 {
+                self.fullLoaded = true
+            } else if self.canvas.scale >= 0.75 {
+                self.requestFullResolution()
+            }
+        }
+    }
+
+    private func startWatching(_ folder: URL) {
+        watcher.watch(folder) { [weak self] in
+            self?.refreshFromDisk()
+        }
+    }
+
+    private func refreshFromDisk() {
+        guard let folder, hasImages else { return }
+        guard let items = try? ImageLibrary.scan(folder: folder, rotations: store.allRotations) else { return }
+        guard !items.isEmpty else {
+            watcher.stop()
+            return
+        }
+        if items.map({ $0.url.path }) == images.map({ $0.url.path }) {
+            return
+        }
+        let currentURL = current?.url
+        images = items
+        if let currentURL, let position = items.firstIndex(where: { $0.url == currentURL }) {
+            index = position
+        } else {
+            index = min(index, items.count - 1)
+        }
+        loadCurrent(fit: true)
+    }
+
+    private func requestFullResolution() {
+        guard canvas.hasImage, let item = current, !fullLoaded, !fullRequested else { return }
+        fullRequested = true
+        let token = loadToken
+        ImageLoader.shared.load(url: item.url, maxPixel: 0) { [weak self] loaded in
+            guard let self, self.loadToken == token, let loaded else { return }
+            self.fullLoaded = true
+            self.canvas.replaceImage(loaded.image)
+        }
+    }
+
+    func loadFullImage(for item: ImageItem, completion: @escaping (NSImage) -> Void) {
+        ImageLoader.shared.load(url: item.url, maxPixel: 0) { loaded in
+            if let image = loaded?.image {
+                completion(image)
             }
         }
     }
@@ -242,6 +323,7 @@ final class AppModel: ObservableObject {
         if images.isEmpty {
             index = 0
             canvas.clear()
+            watcher.stop()
         } else {
             index = min(index, images.count - 1)
             loadCurrent(fit: true)
@@ -249,10 +331,13 @@ final class AppModel: ObservableObject {
     }
 
     func copyImage() {
-        guard let image = canvas.image else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.writeObjects([image])
+        guard let item = current else { return }
+        loadFullImage(for: item) { image in
+            let rotated = ImageRotation.rotated(image, degrees: item.rotation)
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([rotated])
+        }
     }
 
     func copyPath() {
@@ -274,23 +359,85 @@ final class AppModel: ObservableObject {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         if destination.standardizedFileURL == item.url.standardizedFileURL { return }
-        do {
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
+        if item.rotation % 360 == 0 {
+            do {
+                if FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.copyItem(at: item.url, to: destination)
+            } catch {
+                alertMessage = "另存为失败：\(error.localizedDescription)"
             }
-            try FileManager.default.copyItem(at: item.url, to: destination)
-        } catch {
-            alertMessage = "另存为失败：\(error.localizedDescription)"
+            return
+        }
+        loadFullImage(for: item) { [weak self] image in
+            guard let self else { return }
+            if !ImageRotation.write(image, degrees: item.rotation, to: destination) {
+                self.alertMessage = "另存为失败，无法写入旋转后的图片"
+            }
         }
     }
 
     func setAsWallpaper() {
         guard let item = current, let screen = NSScreen.main else { return }
-        do {
-            try NSWorkspace.shared.setDesktopImageURL(item.url, for: screen, options: [:])
-        } catch {
-            alertMessage = "设置桌面背景失败：\(error.localizedDescription)"
+        if item.rotation % 360 == 0 {
+            do {
+                try NSWorkspace.shared.setDesktopImageURL(item.url, for: screen, options: [:])
+            } catch {
+                alertMessage = "设置桌面背景失败：\(error.localizedDescription)"
+            }
+            return
         }
+        loadFullImage(for: item) { [weak self] image in
+            guard let self else { return }
+            let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("ImgViewer", isDirectory: true)
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let target = directory.appendingPathComponent("wallpaper.png")
+            guard ImageRotation.write(image, degrees: item.rotation, to: target) else {
+                self.alertMessage = "设置桌面背景失败，无法写入旋转后的图片"
+                return
+            }
+            do {
+                try NSWorkspace.shared.setDesktopImageURL(target, for: screen, options: [:])
+            } catch {
+                self.alertMessage = "设置桌面背景失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    func printCurrent() {
+        guard let item = current, let window = window ?? NSApp.keyWindow else { return }
+        loadFullImage(for: item) { [weak self] image in
+            guard let self else { return }
+            let rotated = ImageRotation.rotated(image, degrees: item.rotation)
+            let imageView = NSImageView(frame: NSRect(origin: .zero, size: rotated.size))
+            imageView.image = rotated
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            let info = NSPrintInfo.shared.copy() as? NSPrintInfo ?? NSPrintInfo.shared
+            info.orientation = rotated.size.width >= rotated.size.height ? .landscape : .portrait
+            info.topMargin = 18
+            info.bottomMargin = 18
+            info.leftMargin = 18
+            info.rightMargin = 18
+            info.horizontalPagination = .fit
+            info.verticalPagination = .fit
+            let operation = NSPrintOperation(view: imageView, printInfo: info)
+            operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        }
+    }
+
+    func resetRotation() {
+        guard var item = current else { return }
+        store.setRotation(0, for: item.url)
+        item.rotation = 0
+        images[index] = item
+        canvas.setRotation(0)
+    }
+
+    func clearRecent() {
+        store.clearRecent()
+        refreshRecent()
     }
 
     func showProperties() {
@@ -338,6 +485,8 @@ final class AppModel: ObservableObject {
         case "rotate-right": rotate(90)
         case "delete": deleteCurrent()
         case "properties": showProperties()
+        case "print": printCurrent()
+        case "reset-rotation": resetRotation()
         case "options": openOptions()
         default: break
         }
@@ -358,13 +507,18 @@ final class AppModel: ObservableObject {
         slideshowImage = nil
         let url = images[position].url
         ImageLoader.shared.load(url: url, maxPixel: 3200) { [weak self] loaded in
-            guard let self, self.index == position else { return }
-            self.slideshowImage = loaded?.image
+            guard let self, self.index == position, let loaded else { return }
+            let rotation = self.images[position].rotation
+            self.slideshowImage = ImageRotation.rotated(loaded.image, degrees: rotation)
         }
     }
 
     func dismissAlert() {
         alertMessage = nil
+    }
+
+    deinit {
+        watcher.stop()
     }
 }
 

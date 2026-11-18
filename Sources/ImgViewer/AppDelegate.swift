@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSWindowDelegate, NSMenuDelegate {
     private final class WindowContext {
         let window: NSWindow
         let model: AppModel
@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     private var contexts: [WindowContext] = []
     private var monitor: Any?
+    private weak var recentMenu: NSMenu?
+    private var snapshotMode = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -25,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         let arguments = CommandLine.arguments
         if let index = arguments.firstIndex(of: "--snapshot"),
            arguments.indices.contains(index + 1) {
+            snapshotMode = true
             let output = arguments[index + 1]
             if arguments.indices.contains(index + 2) {
                 open(URL(fileURLWithPath: arguments[index + 2]))
@@ -32,7 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
             if contexts.isEmpty {
                 makeWindow()
             }
-            NSApp.activate(ignoringOtherApps: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.captureActiveWindow(to: output)
                 NSApp.terminate(nil)
@@ -49,19 +51,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     private func captureActiveWindow(to path: String) {
         guard let window = activeContext?.window,
               let frameView = window.contentView?.superview else { return }
-        let windowID = CGWindowID(window.windowNumber)
-        if let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowID, [.boundsIgnoreFraming, .bestResolution]) {
-            let rep = NSBitmapImageRep(cgImage: image)
-            if let data = rep.representation(using: .png, properties: [:]) {
-                try? data.write(to: URL(fileURLWithPath: path))
-                return
-            }
-        }
         frameView.layoutSubtreeIfNeeded()
         guard let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return }
         frameView.cacheDisplay(in: frameView.bounds, to: rep)
+        decorateTrafficLights(in: rep, window: window, frameView: frameView)
         guard let data = rep.representation(using: .png, properties: [:]) else { return }
         try? data.write(to: URL(fileURLWithPath: path))
+    }
+
+    private func decorateTrafficLights(in rep: NSBitmapImageRep, window: NSWindow, frameView: NSView) {
+        let buttons: [(NSWindow.ButtonType, NSColor)] = [
+            (.closeButton, NSColor(srgbRed: 1.0, green: 0.37, blue: 0.34, alpha: 1)),
+            (.miniaturizeButton, NSColor(srgbRed: 1.0, green: 0.74, blue: 0.18, alpha: 1)),
+            (.zoomButton, NSColor(srgbRed: 0.16, green: 0.78, blue: 0.25, alpha: 1)),
+        ]
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        for (type, color) in buttons {
+            guard let button = window.standardWindowButton(type) else { continue }
+            let rect = button.convert(button.bounds, to: frameView)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let radius = min(rect.width, rect.height) / 2
+            let circle = NSBezierPath(ovalIn: NSRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            ))
+            color.setFill()
+            circle.fill()
+            (color.blended(withFraction: 0.12, of: .black) ?? color).setStroke()
+            circle.lineWidth = 1
+            circle.stroke()
+        }
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -83,10 +106,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
+        if let context = contexts.first(where: { $0.window === window }) {
+            context.model.window = nil
+        }
+        if SlideshowController.shared.ownerWindow === window {
+            SlideshowController.shared.stop()
+        }
+        saveWindowFrame(window)
         contexts.removeAll { $0.window === window }
     }
 
-    // MARK: 窗口
+    func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        saveWindowFrame(window)
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        saveWindowFrame(window)
+    }
+
+    private func saveWindowFrame(_ window: NSWindow) {
+        guard contexts.contains(where: { $0.window === window }) else { return }
+        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: "windowFrame")
+    }
 
     private var activeContext: WindowContext? {
         if let key = NSApp.keyWindow {
@@ -129,26 +172,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
             defer: false
         )
         panel.title = session.windowTitle
-        panel.minSize = NSSize(width: 1100, height: 600)
+        panel.minSize = WindowPolicy.minimumSize
         panel.isReleasedWhenClosed = false
         panel.delegate = self
-        panel.contentView = NSHostingView(rootView: content)
+        session.window = panel
+        let hosting = DropHostingView(rootView: content)
+        hosting.onDrop = { [weak self] urls in
+            guard let self else { return }
+            for url in urls {
+                self.open(url)
+            }
+        }
+        panel.contentView = hosting
 
-        if let last = contexts.last {
-            let lastFrame = last.window.frame
-            let screen = last.window.screen ?? NSScreen.main
-            let visible = screen?.visibleFrame ?? lastFrame
-            let sideBySideX = lastFrame.maxX + 12
-            if sideBySideX + panel.frame.width <= visible.maxX {
-                panel.setFrameTopLeftPoint(NSPoint(x: sideBySideX, y: lastFrame.maxY))
+        if contexts.count == 1, let existing = contexts.first, let screen = existing.window.screen ?? NSScreen.main {
+            let frames = WindowPolicy.tiledFrames(in: screen.visibleFrame)
+            existing.window.setFrame(frames[0], display: true)
+            panel.setFrame(frames[1], display: true)
+        } else if let last = contexts.last {
+            let visible = (last.window.screen ?? NSScreen.main)?.visibleFrame ?? last.window.frame
+            let frame = WindowPolicy.cascadedFrame(size: panel.frame.size, after: last.window.frame, in: visible)
+            panel.setFrame(frame, display: false)
+        } else if let saved = UserDefaults.standard.string(forKey: "windowFrame") {
+            let frame = NSRectFromString(saved)
+            if frame.width >= WindowPolicy.minimumSize.width,
+               frame.height >= WindowPolicy.minimumSize.height {
+                panel.setFrame(frame, display: false)
             } else {
-                panel.setFrameTopLeftPoint(NSPoint(x: lastFrame.minX + 28, y: lastFrame.maxY - 28))
+                panel.center()
             }
         } else {
             panel.center()
         }
 
-        panel.makeKeyAndOrderFront(nil)
+        if snapshotMode {
+            panel.setFrameOrigin(NSPoint(x: -6000, y: -6000))
+            panel.orderFront(nil)
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+        }
 
         let context = WindowContext(window: panel, model: session)
         context.cancellable = session.objectWillChange.sink { [weak panel, weak session] _ in
@@ -306,9 +368,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         fileItem.submenu = fileMenu
         add(fileMenu, "打开文件夹…", #selector(openFolder), "o", .command)
         add(fileMenu, "打开图片…", #selector(openImage), "o", [.command, .shift])
+        let recentItem = NSMenuItem(title: "最近打开", action: nil, keyEquivalent: "")
+        let recent = NSMenu(title: "最近打开")
+        recent.delegate = self
+        recentItem.submenu = recent
+        recentMenu = recent
+        fileMenu.addItem(recentItem)
         fileMenu.addItem(.separator())
         add(fileMenu, "另存为…", #selector(saveAs), "s", [.command, .shift])
         add(fileMenu, "属性", #selector(showProperties), "i", .command)
+        add(fileMenu, "打印…", #selector(printImage), "p", .command)
         fileMenu.addItem(.separator())
         let closeItem = NSMenuItem(title: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileMenu.addItem(closeItem)
@@ -390,7 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         case #selector(firstImage), #selector(lastImage):
             return hasImages
         case #selector(copyImage), #selector(copyPath), #selector(saveAs),
-             #selector(showProperties), #selector(deleteImage),
+             #selector(showProperties), #selector(deleteImage), #selector(printImage),
              #selector(rotateClockwise), #selector(rotateCounterClockwise):
             return hasImages
         case #selector(zoomIn), #selector(zoomOut), #selector(fitWindow), #selector(actualSize):
@@ -444,9 +513,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     @objc private func deleteImage() { modelForAction.deleteCurrent() }
 
+    @objc private func printImage() { modelForAction.printCurrent() }
+
     @objc private func startSlideshow() { modelForAction.startSlideshow() }
 
     @objc private func toggleSlideshowPause() { SlideshowController.shared.togglePause() }
 
     @objc private func stopSlideshow() { SlideshowController.shared.stop() }
+
+    @objc private func openRecent(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        open(URL(fileURLWithPath: path))
+    }
+
+    @objc private func clearRecent() {
+        modelForAction.clearRecent()
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === recentMenu else { return }
+        menu.removeAllItems()
+        let folders = activeModel?.store.recentFolders ?? []
+        if folders.isEmpty {
+            let empty = NSMenuItem(title: "无最近记录", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+            return
+        }
+        for path in folders.prefix(10) {
+            let item = NSMenuItem(
+                title: URL(fileURLWithPath: path).lastPathComponent,
+                action: #selector(openRecent(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = path
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let clear = NSMenuItem(title: "清除最近记录", action: #selector(clearRecent), keyEquivalent: "")
+        clear.target = self
+        menu.addItem(clear)
+    }
 }

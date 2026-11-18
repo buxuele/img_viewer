@@ -21,6 +21,7 @@ final class CanvasState: ObservableObject {
     let maximumScale: CGFloat = 8
 
     var viewSize: CGSize = .zero
+    private(set) var backingScale: CGFloat = 1
 
     var hasImage: Bool { image != nil && imageSize.width > 0 && imageSize.height > 0 }
 
@@ -31,13 +32,16 @@ final class CanvasState: ObservableObject {
         let swapped = rotation % 180 != 0
         let width = swapped ? imageSize.height : imageSize.width
         let height = swapped ? imageSize.width : imageSize.height
-        let available = CGSize(width: max(120, viewSize.width - 28), height: max(120, viewSize.height - 24))
+        let available = CGSize(
+            width: max(120, viewSize.width - 28) * backingScale,
+            height: max(120, viewSize.height - 24) * backingScale
+        )
         return min(available.width / width, available.height / height, 1)
     }
 
     var displayedSize: CGSize {
-        let width = imageSize.width * scale
-        let height = imageSize.height * scale
+        let width = imageSize.width * scale / backingScale
+        let height = imageSize.height * scale / backingScale
         return rotation % 180 == 0
             ? CGSize(width: width, height: height)
             : CGSize(width: height, height: width)
@@ -47,6 +51,17 @@ final class CanvasState: ObservableObject {
         guard hasImage, viewSize.width > 0 else { return false }
         let size = displayedSize
         return size.width > viewSize.width + 1 || size.height > viewSize.height + 1
+    }
+
+    func setBackingScale(_ value: CGFloat) {
+        guard value > 0, value != backingScale else { return }
+        backingScale = value
+        if mode == .fit {
+            scale = fitScale
+            offset = .zero
+        } else {
+            clampOffset()
+        }
     }
 
     func setViewSize(_ size: CGSize) {

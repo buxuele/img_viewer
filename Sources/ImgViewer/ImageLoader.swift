@@ -51,7 +51,24 @@ final class ImageLoader {
             cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
                 ?? CGImageSourceCreateImageAtIndex(source, 0, nil)
         } else {
-            cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            var fullSize = 0
+            if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+                let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+                let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+                fullSize = max(width, height)
+            }
+            if fullSize > 0 {
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: fullSize,
+                ]
+                cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+                    ?? CGImageSourceCreateImageAtIndex(source, 0, nil)
+            } else {
+                cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            }
         }
         guard let cgImage else { return nil }
         let size = CGSize(width: cgImage.width, height: cgImage.height)
