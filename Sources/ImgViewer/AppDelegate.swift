@@ -523,7 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     @objc private func openRecent(_ sender: NSMenuItem) {
         guard let path = sender.representedObject as? String else { return }
-        open(URL(fileURLWithPath: path))
+        modelForAction.openRecentFolder(path)
     }
 
     @objc private func clearRecent() {

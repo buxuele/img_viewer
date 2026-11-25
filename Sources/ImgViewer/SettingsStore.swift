@@ -50,6 +50,7 @@ final class SettingsStore {
     private let defaults: UserDefaults
     private let settingsKey = "appSettings"
     private let recentKey = "recentFolders"
+    private let onboardingKey = "hasCompletedOnboarding"
     private let rotationFile: URL
     private var rotations: [String: Int]
 
@@ -82,6 +83,11 @@ final class SettingsStore {
             defaults.set(data, forKey: settingsKey)
             NotificationCenter.default.post(name: .imgViewerSettingsChanged, object: self)
         }
+    }
+
+    var hasCompletedOnboarding: Bool {
+        get { defaults.bool(forKey: onboardingKey) }
+        set { defaults.set(newValue, forKey: onboardingKey) }
     }
 
     var recentFolders: [String] {

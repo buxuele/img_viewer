@@ -16,7 +16,9 @@ mkdir -p "$DIST" "$STAGE"
 
 cp -R "$SOURCE" "$STAGE/照片查看器.app"
 ln -s /Applications "$STAGE/Applications"
-codesign --force --deep --sign - "$STAGE/照片查看器.app"
+codesign --force --deep --sign - \
+  --entitlements "$PWD/Sources/ImgViewer/ImgViewer.entitlements" \
+  "$STAGE/照片查看器.app"
 
 rm -f "$DIST/ImgViewer-$VERSION.dmg"
 hdiutil create \

@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published var alertMessage: String?
     @Published var slideshowImage: NSImage?
     @Published var isSlideshowRunning = false
+    @Published var showingOnboarding = false
 
     let canvas = CanvasState()
     let store: SettingsStore
@@ -36,11 +37,14 @@ final class AppModel: ObservableObject {
     private var fullLoaded = false
     private var cancellables = Set<AnyCancellable>()
     private let watcher = FolderWatcher()
+    private let bookmarks = BookmarkStore.shared
+    private var accessingURL: URL?
 
     init(store: SettingsStore = .shared) {
         self.store = store
         settings = store.settings
         refreshRecent()
+        showingOnboarding = !store.hasCompletedOnboarding
 
         NotificationCenter.default.publisher(for: .imgViewerSettingsChanged, object: store)
             .receive(on: RunLoop.main)
@@ -130,6 +134,8 @@ final class AppModel: ObservableObject {
         panel.message = "选择包含图片的文件夹"
         if let folder { panel.directoryURL = folder }
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        bookmarks.save(url)
+        store.hasCompletedOnboarding = true
         if let requestOpen {
             requestOpen(url)
         } else {
@@ -154,13 +160,15 @@ final class AppModel: ObservableObject {
     }
 
     func loadFolder(_ url: URL) {
-        let folderURL = url.standardizedFileURL
+        let folderURL = (bookmarks.resolve(url.path) ?? url).standardizedFileURL
+        beginAccess(folderURL)
         do {
             let items = try ImageLibrary.scan(folder: folderURL, rotations: store.allRotations)
             guard !items.isEmpty else {
                 alertMessage = "这个文件夹里没有可显示的图片"
                 return
             }
+            bookmarks.save(folderURL)
             images = items
             folder = folderURL
             index = 0
@@ -171,30 +179,61 @@ final class AppModel: ObservableObject {
             startWatching(folderURL)
             loadCurrent(fit: settings.fitOnOpen)
         } catch {
-            alertMessage = "无法打开文件夹：\(error.localizedDescription)"
+            alertMessage = "无法读取这个文件夹。请在打开文件夹里重新选择一次，授权会保存下来。"
         }
+    }
+
+    private func beginAccess(_ url: URL) {
+        if accessingURL?.standardizedFileURL.path == url.standardizedFileURL.path {
+            return
+        }
+        accessingURL?.stopAccessingSecurityScopedResource()
+        _ = url.startAccessingSecurityScopedResource()
+        accessingURL = url
     }
 
     func openImage(_ url: URL) {
         let parent = url.deletingLastPathComponent()
-        do {
-            let items = try ImageLibrary.scan(folder: parent, rotations: store.allRotations)
-            guard let position = items.firstIndex(where: { $0.url.path == url.standardizedFileURL.path }) else {
-                alertMessage = "无法打开这张图片"
-                return
-            }
+        let target = url.standardizedFileURL
+        if let items = try? ImageLibrary.scan(folder: parent, rotations: store.allRotations),
+           let position = items.firstIndex(where: { $0.url == target }) {
             images = items
             folder = parent
             index = position
+            beginAccess(parent)
+            bookmarks.save(parent)
             if settings.rememberRecent {
                 store.remember(folder: parent)
                 refreshRecent()
             }
             startWatching(parent)
-            loadCurrent(fit: settings.fitOnOpen)
-        } catch {
-            alertMessage = "无法打开图片：\(error.localizedDescription)"
+        } else {
+            images = [ImageItem(url: target, rotation: store.rotation(for: target))]
+            folder = parent
+            index = 0
+            beginAccess(target)
+            watcher.stop()
         }
+        loadCurrent(fit: settings.fitOnOpen)
+    }
+
+    func openRecentFolder(_ path: String) {
+        guard let url = bookmarks.resolve(path) else {
+            alertMessage = "这个文件夹的访问权限已经失效，请用打开文件夹重新选择一次。"
+            return
+        }
+        loadFolder(url)
+    }
+
+    func completeOnboarding() {
+        store.hasCompletedOnboarding = true
+        showingOnboarding = false
+        openFolderPanel()
+    }
+
+    func dismissOnboarding() {
+        store.hasCompletedOnboarding = true
+        showingOnboarding = false
     }
 
     func loadCurrent(fit: Bool? = nil) {
@@ -519,6 +558,7 @@ final class AppModel: ObservableObject {
 
     deinit {
         watcher.stop()
+        accessingURL?.stopAccessingSecurityScopedResource()
     }
 }
 

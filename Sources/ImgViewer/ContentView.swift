@@ -13,6 +13,9 @@ struct ContentView: View {
         }
         .frame(minWidth: 680, minHeight: 500)
         .navigationTitle(model.windowTitle)
+        .sheet(isPresented: $model.showingOnboarding) {
+            OnboardingView(model: model)
+        }
         .sheet(isPresented: $model.showingOptions) {
             OptionsView(model: model)
         }
@@ -80,7 +83,7 @@ struct EmptyLibraryView: View {
                     .padding(.horizontal, 4)
                     ForEach(model.recent.prefix(6), id: \.path) { url in
                         RecentFolderRow(url: url) {
-                            model.loadFolder(url)
+                            model.openRecentFolder(url.path)
                         }
                     }
                 }

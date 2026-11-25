@@ -29,6 +29,8 @@ if [ "$needs_build" = 1 ]; then
   xcodebuild -project ImgViewer.xcodeproj -scheme ImgViewer -configuration Release -derivedDataPath .build build
 fi
 
+bash scripts/sign_app.sh
+
 if pgrep -f "$BINARY" >/dev/null 2>&1; then
   echo "$APP_NAME 已经在运行"
   open "$BUNDLE"
